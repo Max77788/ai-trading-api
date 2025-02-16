@@ -30,10 +30,11 @@ BINANCE_API_URL = "https://api.binance.com/api/v3/ticker/price"
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
-client = OpenAI(
-  base_url=OPENROUTER_API_URL,
-  api_key=OPENROUTER_API_KEY,
-)
+if OPENROUTER_API_KEY:
+    client = OpenAI(
+    base_url=OPENROUTER_API_URL,
+    api_key=OPENROUTER_API_KEY,
+    )
 
 # ----------------------------------------------------------------------
 # Example Pinecone initialization
