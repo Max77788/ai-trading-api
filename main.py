@@ -9,8 +9,8 @@ load_dotenv(find_dotenv())
 
 # --- External libraries for AI and memory ---
 import pinecone
-import openrouter
-from openrouter import ChatOpenRouter, ChatMessage
+# import openrouter
+# from openrouter import ChatOpenRouter, ChatMessage
 # pydanticai is a hypothetical library that extends Pydantic with AI-related features.
 # Its usage may vary depending on your specific needs.
 from pydantic_ai import Agent
