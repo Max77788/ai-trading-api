@@ -15,7 +15,7 @@ RANK_API_SECRET = os.environ.get("RANK_API_SECRET")
 url = "https://api.ranktrading.cloud/agent/ask"
 headers = {
     "Content-Type": "application/json",
-    "Authorization": "RANK-API-SECRET:vtXb58EZAX24NYL1-T4Frb6p3Td349GFS-4ZfYEjfyi9tslF5C"
+    "Authorization": f"RANK-API-SECRET:{RANK_API_SECRET}"
 }
 
 def get_trading_signals():
