@@ -1,11 +1,13 @@
 import os
 from flask import Flask, request, jsonify
-from pydantic import BaseModel, ValidationError
 import requests
+import json
 
 # Import dotenv to load environment variables
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
+
+from functions import get_trading_signals
 
 # --- External libraries for AI and memory ---
 import pinecone
@@ -30,6 +32,18 @@ BINANCE_API_URL = "https://api.binance.com/api/v3/ticker/price"
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
+AGENT_MAIN_INSTRUCTIONS="""
+You are the AI assistant in AI trading app. Your goal is to help users make wise investment decisions based on their requests and market situations.
+
+You are given the summary of the recommendation regarding the particular asset and the action the user should undertake regarding the asset (sell/hold/buy)
+
+"""
+
+CRYPTO_DETECTION_INSTRUCTION=""" 
+Your current task is to define whether the user mentions any specific cryptocurrency.
+Return the following json as the response { crypto_mentioned: bool, ticker: string }
+"""
+
 if OPENROUTER_API_KEY:
     client = OpenAI(
     base_url=OPENROUTER_API_URL,
@@ -47,14 +61,6 @@ if pinecone_api_key and pinecone_environment:
     pinecone.init(api_key=pinecone_api_key, environment=pinecone_environment)
     # Create or reference an existing Pinecone index here:
     # example_index = pinecone.Index("my-embeddings-index")
-
-# Pydantic models for validating incoming requests
-class ChatRequest(BaseModel):
-    message: str
-    user_id: str = "default_user"
-
-class TechnicalAnalysisRequest(BaseModel):
-    symbol: str
 
 @app.route('/')
 def index():
@@ -99,33 +105,49 @@ def chat():
     """
     try:
         data = request.get_json()
-        chat_request = ChatRequest(**data)
-
-        # If OpenRouter is configured, use it to generate a response
-        if chat_model:
-            # Construct messages for the model
-            messages = [
-                ChatMessage(role="system", content="You are a helpful trading assistant."),
-                ChatMessage(role="user", content=chat_request.message)
-            ]
-            # Create chat completion
-            ai_response = chat_model.create_chat_completion(messages=messages)
-            response_text = ai_response.content
+        
+        inquiry = data["question"]
+        
+        # Q example: Should I buy ETH today
+        
+        completion = client.chat.completions.create(
+        model="openai/gpt-4o",
+        messages=[
+            {"role": "developer", "content": AGENT_MAIN_INSTRUCTIONS+CRYPTO_DETECTION_INSTRUCTION},
+            {"role": "user", "content": inquiry}
+        ],
+        response_format={"type": "json_object"}
+        )
+        
+        response_json = json.loads(completion.choices[0].message.content)
+        
+        print(f"First Response: {response_json}")
+        
+        if response_json.get("crypto_mentioned"):
+            rank_api_data = get_trading_signals()
         else:
-            # Fallback: Just echo the user message
-            response_text = (
-                f"Hey, I got your message: '{chat_request.message}'. "
-                "Let me crunch some numbers for you!"
+            rank_api_data = get_trading_signals()
+            
+            print(f"Rank API Data: {rank_api_data}")
+            
+            prompt_to_pass = " provide the clear response to user based on this assets pair evaluation "+str(rank_api_data)
+            
+            completion = client.chat.completions.create(
+            model="openai/gpt-4o",
+            messages=[
+                {"role": "developer", "content": AGENT_MAIN_INSTRUCTIONS+prompt_to_pass}
+            ]
             )
+            
+            print(completion)
+            
+            reply = completion.choices[0].message.content
+        
+        
+        
+        return jsonify({"response": reply, "rank_api_response": rank_api_data})
 
-        # (Optional) You could store the user message in Pinecone for memory or analysis
-        # if pinecone_api_key and pinecone_environment:
-        #     vector = embed_text_with_some_method(chat_request.message)
-        #     example_index.upsert([(chat_request.user_id, vector, {"text": chat_request.message})])
-
-        return jsonify({"status": "success", "response": response_text})
-    except ValidationError as ve:
-        return jsonify({"status": "error", "message": ve.errors()}), 400
+        
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
