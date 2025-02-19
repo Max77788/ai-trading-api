@@ -97,6 +97,51 @@ def get_daily_signals():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+
+@app.route('/process_daily_signal', methods=['GET'])
+def process_daily_signal():
+    """
+    Handles chat messages for trading queries.
+    Integrates with OpenRouter to generate AI-driven responses.
+    """
+    try:
+        # data = request.get_json()
+        
+        # inquiry = data["question"]
+        
+        # Q example: Should I buy ETH today
+        
+        
+        rank_api_data = get_trading_signals()
+        
+        print(f"Rank API Data: {rank_api_data}")
+        
+        prompt_to_pass = " provide the clear response to user based on this assets pair evaluation "+str(rank_api_data)
+        
+        completion = client.chat.completions.create(
+        model="openai/gpt-4o",
+        messages=[
+            {"role": "developer", "content": AGENT_MAIN_INSTRUCTIONS+prompt_to_pass}
+        ]
+        )
+        
+        print(completion)
+        
+        reply = completion.choices[0].message.content
+        
+        
+        
+        return jsonify({"response": reply, "rank_api_response": rank_api_data})
+
+        
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+
+
+
+
 @app.route('/chat', methods=['POST'])
 def chat():
     """
@@ -123,14 +168,25 @@ def chat():
         
         print(f"First Response: {response_json}")
         
+        rank_api_data = None
+        
         if response_json.get("crypto_mentioned"):
-            rank_api_data = get_trading_signals()
+            return jsonify({"crypto_found_in_q": True})
         else:
-            rank_api_data = get_trading_signals()
+            return jsonify({"crypto_found_in_q": False})
+        
+        if response_json.get("crypto_mentioned"):
+            ticker_to_search = response_json.get("ticker")
             
-            print(f"Rank API Data: {rank_api_data}")
+            # Look up the signal for the asked ticker
             
-            prompt_to_pass = " provide the clear response to user based on this assets pair evaluation "+str(rank_api_data)
+            print("")
+            
+            # rank_api_data = get_trading_signals()
+        else:
+            # Just ask the question
+            
+            prompt_to_pass = ""
             
             completion = client.chat.completions.create(
             model="openai/gpt-4o",
