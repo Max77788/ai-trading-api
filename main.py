@@ -120,7 +120,7 @@ def process_daily_signal():
 
         # Fetch current market data via a market data API (ensure current_market_data returns a dict with key 'price')
         current_market_data = get_market_data(rank_api_data['asset'])
-        current_price = float(current_market_data.get('price'))
+        current_price = float(current_market_data.get('USDT'))
         
         # Extract trade parameters from the trading signal
         entry_price = rank_api_data.get('entryPrice')
