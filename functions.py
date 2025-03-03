@@ -30,6 +30,8 @@ def get_market_data(ticker):
     response = requests.get(url)
     data = response.json()
     
+    print(f"Response from Binance API: {data}")
+    
     # print(f"Current price of {ticker}: {data['price']}")
     
     return data
