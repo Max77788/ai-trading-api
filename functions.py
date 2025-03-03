@@ -24,3 +24,12 @@ def get_trading_signals():
     data = response.json()
     
     return data
+
+def get_market_data(ticker):
+    url = f"https://api.binance.com/api/v3/ticker/price?symbol={ticker}"
+    response = requests.get(url)
+    data = response.json()
+    
+    # print(f"Current price of {ticker}: {data['price']}")
+    
+    return data

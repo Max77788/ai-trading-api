@@ -2,12 +2,13 @@ import os
 from flask import Flask, request, jsonify
 import requests
 import json
+from datetime import datetime
 
 # Import dotenv to load environment variables
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 
-from functions import get_trading_signals
+from functions import get_trading_signals, get_market_data
 
 # --- External libraries for AI and memory ---
 import pinecone
@@ -102,39 +103,98 @@ def get_daily_signals():
 def process_daily_signal():
     """
     Handles chat messages for trading queries.
-    Integrates with OpenRouter to generate AI-driven responses.
+    Integrates with OpenRouter to generate AI-driven responses with enhanced insights,
+    including a detailed evaluation and a concise summary.
     """
     try:
-        # data = request.get_json()
-        
-        # inquiry = data["question"]
-        
-        # Q example: Should I buy ETH today
-        
-        
+        # Retrieve trading signal from the Rank API
         rank_api_data = get_trading_signals()
-        
         print(f"Rank API Data: {rank_api_data}")
+
+        # Get the current datetime
+        current_time = datetime.now()
         
-        prompt_to_pass = " provide the clear response to user based on this assets pair evaluation "+str(rank_api_data)
+        # Use signalTime from the trading signal if available, otherwise use current_time
+        prediction_time = rank_api_data.get('signalTime', current_time)
+        time_diff = current_time - prediction_time
+
+        # Fetch current market data via a market data API (ensure current_market_data returns a dict with key 'price')
+        current_market_data = get_market_data(rank_api_data['asset'])
+        current_price = float(current_market_data.get('price'))
         
-        completion = client.chat.completions.create(
-        model="openai/gpt-4o",
-        messages=[
-            {"role": "developer", "content": AGENT_MAIN_INSTRUCTIONS+prompt_to_pass}
-        ]
+        # Extract trade parameters from the trading signal
+        entry_price = rank_api_data.get('entryPrice')
+        profit_price = rank_api_data.get('profitPrice')
+        stop_loss_price = rank_api_data.get('stopLossPrice')
+        duration = rank_api_data.get('duration')
+        strength = rank_api_data.get('strength')
+
+        # Calculate percentage difference between the current price and entry price if possible
+        if current_price and entry_price:
+            percentage_diff = ((current_price - entry_price) / entry_price) * 100
+        else:
+            percentage_diff = None
+
+        # Build insights based on current market conditions compared to the trade signal
+        insights = ""
+        if percentage_diff is not None:
+            if -1 <= percentage_diff <= 1:
+                insights = (f"The current price ${current_price} is very close to the entry price ${entry_price}.")
+            elif percentage_diff < -1:
+                insights = (f"The current price is ${current_price}, which is {abs(percentage_diff):.2f}% below the entry price ${entry_price}. "
+                            "A retracement might be needed.")
+            else:
+                insights = (f"The current price ${current_price} is {percentage_diff:.2f}% above the entry price ${entry_price}.")
+        else:
+            insights = "Insufficient market data to compare prices."
+
+        # Build a detailed prompt with all trade and market parameters.
+        prompt_to_pass = (
+            f"Provide a clear, insightful response to the user's trading query based on the following evaluation:\n"
+            f"Asset: {rank_api_data.get('asset')}\n"
+            f"Action: {rank_api_data.get('action')}\n"
+            f"Entry Price: {entry_price}\n"
+            f"Profit Target: {profit_price}\n"
+            f"Stop Loss: {stop_loss_price}\n"
+            f"Trade Duration: {duration} seconds\n"
+            f"Signal Strength: {strength}\n"
+            f"Prediction Time: {prediction_time} (Time since prediction: {time_diff})\n"
+            f"Current Time: {current_time}\n"
+            f"Current Market Price: {current_price}\n"
+            f"Market Insight: {insights}\n"
         )
         
-        print(completion)
+        # Call OpenRouter's chat model for a detailed response
+        detailed_completion = client.chat.completions.create(
+            model="openai/o3-mini-high",
+            messages=[
+                {"role": "developer", "content": AGENT_MAIN_INSTRUCTIONS + prompt_to_pass}
+            ]
+        )
+        detailed_reply = detailed_completion.choices[0].message.content
         
-        reply = completion.choices[0].message.content
+        # Append a concise summary request to the detailed prompt
+        concise_prompt = prompt_to_pass + "\nPlease provide a concise summary of the above trading evaluation."
         
+        # Call the chat model to generate a concise response
+        concise_completion = client.chat.completions.create(
+            model="openai/o3-mini-high",
+            messages=[
+                {"role": "developer", "content": AGENT_MAIN_INSTRUCTIONS + concise_prompt}
+            ]
+        )
+        concise_reply = concise_completion.choices[0].message.content
         
-        
-        return jsonify({"response": reply, "rank_api_response": rank_api_data})
+        # Return both detailed and concise responses along with raw API data
+        return jsonify({
+            "detailed_response": detailed_reply,
+            "concise_response": concise_reply,
+            "rank_api_response": rank_api_data,
+            "market_data": current_market_data
+        })
 
-        
     except Exception as e:
+        print(e)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
