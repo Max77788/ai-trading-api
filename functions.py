@@ -26,11 +26,12 @@ def get_trading_signals():
     return data
 
 def get_market_data(ticker):
-    url = f"https://min-api.cryptocompare.com/data/price?fsym={ticker.replace("USDT","")}&tsyms=USDT"
+    url = f"https://min-api.cryptocompare.com/data/price?fsym={ticker.replace('USDT', '')}&tsyms=USDT"
+
     response = requests.get(url)
     data = response.json()
     
-    print(f"Response from Binance API: {data}")
+    print(f"Response from CryptoCompare API: {data}")
     
     # print(f"Current price of {ticker}: {data['price']}")
     
